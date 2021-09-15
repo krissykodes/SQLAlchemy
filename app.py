@@ -11,7 +11,7 @@ from flask import Flask, jsonify
 #################################################
 # Database Setup
 #################################################
-engine = create_engine("sqlite:///titanic.sqlite")
+engine = create_engine("sqlite:///Resources/hawaii.sqlite", connect_args={'check_same_thread':False},echo=True)
 
 # reflect an existing database into a new model
 Base = automap_base()
@@ -19,7 +19,8 @@ Base = automap_base()
 Base.prepare(engine, reflect=True)
 
 # Save reference to the table
-Passenger = Base.classes.passenger
+measurement = Base.classes.measurement
+station = Base.classes.station
 
 #################################################
 # Flask Setup
@@ -41,44 +42,35 @@ def welcome():
     )
 
 
-@app.route("/api/v1.0/names")
-def names():
-    # Create our session (link) from Python to the DB
-    session = Session(engine)
+@app.route("/api/v1.0/precipitation")
+def precipitation():
+    """Return a list of precipitation from last year"""
+    final_data_point = session.query(measurement.date).order_by(measurement.date.desc()).first()
 
-    """Return a list of all passenger names"""
-    # Query all passengers
-    results = session.query(Passenger.name).all()
+    last_12_months = dt.date(2017, 8,23) - dt.timedelta(days= 365)
 
-    session.close()
-
-    # Convert list of tuples into normal list
-    all_names = list(np.ravel(results))
-
-    return jsonify(all_names)
+    precipitation = session.query(measurement.date, measurement.prcp).\
+    filter(measurement.date > last_12_months).\
+    order_by(measurement.date).all()
+   
+    return jsonify(precipitation)
 
 
-@app.route("/api/v1.0/passengers")
+@app.route("/api/v1.0/stations")
 def passengers():
-    # Create our session (link) from Python to the DB
-    session = Session(engine)
+    most_active = session.query(measurement.station, func.count(measurement.station)).group_by(measurement.station).order_by(func.count(measurement.station).desc()).all()
 
-    """Return a list of passenger data including the name, age, and sex of each passenger"""
-    # Query all passengers
-    results = session.query(Passenger.name, Passenger.age, Passenger.sex).all()
+    return jsonify(most_active)
 
-    session.close()
+# TOBS
+@app.route("/api/v1.0/tobs")
+def tobs():
 
-    # Create a dictionary from the row data and append to a list of all_passengers
-    all_passengers = []
-    for name, age, sex in results:
-        passenger_dict = {}
-        passenger_dict["name"] = name
-        passenger_dict["age"] = age
-        passenger_dict["sex"] = sex
-        all_passengers.append(passenger_dict)
+    most_active = session.query(measurement.station, func.count(measurement.station)).group_by(measurement.station).order_by(func.count(measurement.station).desc()).all()
+    
+    station_temps = most_active[0][0]
 
-    return jsonify(all_passengers)
+    station_temps = session.query(func.min( measurement.tobs), func.max(measurement.tobs), func.avg(measurement.tobs)).filter(measurement.station == station_temps).all()
 
 
 if __name__ == '__main__':
